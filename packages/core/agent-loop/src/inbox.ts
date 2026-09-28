@@ -102,13 +102,15 @@ export class ReactLoopInbox implements InboxContract {
 
   /**
    * Remove and return the complete batch proposed for one step.
-   * @param target - whether this boundary also consumes one queued turn.
+   * @param target - whether this boundary also consumes the queued turn batch.
    * @param turn - turn that will own the claimed batch.
-   * @returns next-step input followed by the queued turn, when requested.
+   * @returns next-step input followed by all queued turn messages, when requested.
    */
   claim(target: InboxTarget, turn: number): UserMessage[] {
-    const claimed = this.mutate('next-step', 0, this.nextStep.length, [], false)
-    if (target === 'next-turn') claimed.push(...this.mutate('next-turn', 0, 1, [], false))
+    const nextStepCount = this.nextStep.length
+    const nextTurnCount = target === 'next-turn' ? this.nextTurn.length : 0
+    const claimed = this.mutate('next-step', 0, nextStepCount, [], false)
+    if (target === 'next-turn') claimed.push(...this.mutate('next-turn', 0, nextTurnCount, [], false))
     for (const message of claimed) this.dispatch.emit('agent/inbox/claimed', { message, turn })
     return claimed
   }

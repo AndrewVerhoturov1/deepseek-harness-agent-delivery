@@ -367,7 +367,7 @@ export class SubagentContinuationManager {
     message: ReturnType<typeof createUserMessage>,
   ): void {
     try {
-      this.activations.sendWaking(parent, message, 'steer')
+      this.activations.sendWaking(parent, message, 'queue')
     } catch (error: unknown) {
       throw new SubagentError(
         'direct parent is not live; the message was not delivered',

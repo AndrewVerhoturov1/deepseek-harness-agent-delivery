@@ -878,7 +878,7 @@ export class ContinuableActivationRegistry {
         parent.inject(message)
         return
       }
-      this.sendWaking(parent, message, parent.status === 'idle' ? 'queue' : 'steer')
+      this.sendWaking(parent, message, 'queue')
     } catch (error: unknown) {
       this.ctx.logger.warn(
         `subagent "${activation.childId}" settlement notice was not delivered to its parent: `

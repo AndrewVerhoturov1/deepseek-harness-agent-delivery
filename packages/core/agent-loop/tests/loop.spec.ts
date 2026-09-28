@@ -1655,6 +1655,52 @@ describe('agent loop', () => {
     ])
   })
 
+  it('ends the old turn after an active step and drains A/B/C together', async () => {
+    const release = Promise.withResolvers<void>()
+    const entered = Promise.withResolvers<void>()
+    const adapter = new MockAdapter([textResponse('old'), textResponse('fresh')])
+    adapter.stream = async function * (options) {
+      this.requests.push(options)
+      if (this.requests.length === 1) { entered.resolve(); await release.promise }
+      for (const chunk of textResponse('done')) yield chunk
+    }
+    const ctx = await harness(adapter)
+    const agent = await ctx.agentLoop.create(SessionId('batch-active'), { provider: 'mock', model: 'mock' })
+    send(agent, 'initial')
+    await entered.promise
+    for (const text of ['A', 'B', 'C']) send(agent, text)
+    expect(adapter.requests).toHaveLength(1)
+    release.resolve()
+    await waitForIdle(ctx, agent)
+    expect(agent.session.snapshotEvents().filter(e => e.type === 'step/start').map(e => [e.data.turn, e.data.step]))
+      .toEqual([[1, 1], [2, 1]])
+    expect(userTexts(agent)).toEqual(['initial', 'A', 'B', 'C'])
+    expect(agent.inbox.nextTurn).toHaveLength(0)
+  })
+
+  it('drains idle queued input once and leaves post-batch arrivals for later', async () => {
+    const adapter = new MockAdapter([textResponse('first'), textResponse('second')])
+    const ctx = await harness(adapter)
+    const agent = await ctx.agentLoop.create(SessionId('batch-idle'), { provider: 'mock', model: 'mock' })
+    for (const text of ['A', 'B']) agent.inbox.append('next-turn', createUserMessage({
+      content: [{ type: 'text', text }], source: { kind: 'user' },
+    }))
+    let later = false
+    ctx.on('agent/inbox/claimed', ({ agent: recipient, message }) => {
+      if (recipient === agent && !later && message.content[0]?.type === 'text' && message.content[0].text === 'A') {
+        later = true
+        send(agent, 'C')
+      }
+    })
+    const idle = waitForIdle(ctx, agent)
+    agent.steer(createUserMessage({ content: [{ type: 'text', text: 'wake' }], source: { kind: 'user' } }))
+    await idle
+    expect(later).toBe(true)
+    expect(userTexts(agent)).toEqual(['wake', 'A', 'B', 'C'])
+    expect(agent.session.snapshotEvents().filter(e => e.type === 'step/start').map(e => [e.data.turn, e.data.step]))
+      .toEqual([[1, 1], [2, 1]])
+  })
+
   it('keeps a session-listener send after dequeue in the following turn', async () => {
     const adapter = new MockAdapter([textResponse('first'), textResponse('second')])
     const ctx = await harness(adapter)

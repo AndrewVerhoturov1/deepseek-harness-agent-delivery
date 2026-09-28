@@ -52,9 +52,10 @@ type Phase =
 type StepEndReason = Extract<TurnEndReason, { kind: 'completed' | 'max-tokens' }>
 
 type PreparedStep =
-  | { kind: 'reject' }
+  | { kind: 'reject'; claimed: UserMessage[] }
   | {
     kind: 'enter'
+    claimed: UserMessage[]
     messages: UserMessage[]
     startsRequestSeries?: true
     assembly: PromptAssembly
@@ -281,8 +282,8 @@ export class ReactLoopAgent implements Agent {
       }),
     )
     signal.throwIfAborted()
-    if (decision.kind === 'reject') return decision
-    return { ...decision, assembly }
+    if (decision.kind === 'reject') return { ...decision, claimed }
+    return { ...decision, claimed, assembly }
   }
 
   /** Whether the assembled tool schemas differ from the logged request header's. */
@@ -314,6 +315,13 @@ export class ReactLoopAgent implements Agent {
         signal.throwIfAborted()
         const step = phase.step + 1
         const decision = await this.preStep(target, { turn, step })
+        if (phase.step > 0 && this.inbox.nextTurn.length > 0) {
+          // A follow-up arrived while pre-step was awaiting a plugin. Preserve
+          // what pre-step already claimed ahead of later arrivals.
+          this.inbox.splice('next-turn', 0, 0, decision.claimed)
+          turnEnds ??= { kind: 'completed' }
+          break
+        }
         if (decision.kind === 'reject') {
           turnEnds = { kind: 'blocked' }
           return false
@@ -356,9 +364,17 @@ export class ReactLoopAgent implements Agent {
           this.session.append('step/end', { turn, step })
         }
         signal.throwIfAborted()
+        if (this.inbox.nextTurn.length > 0) {
+          turnEnds ??= { kind: 'completed' }
+          break
+        }
         if (turnEnds && this.inbox.nextStep.length === 0) {
           await this.dispatch.serial('agent/turn-stopping', { turn, signal })
           signal.throwIfAborted()
+        }
+        if (this.inbox.nextTurn.length > 0) {
+          turnEnds ??= { kind: 'completed' }
+          break
         }
         if (turnEnds && this.inbox.nextStep.length === 0) break
         target = 'next-step'

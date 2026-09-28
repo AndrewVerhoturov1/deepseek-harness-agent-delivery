@@ -2650,7 +2650,7 @@ describe('continuable adjacent-Agent delivery', () => {
     await handle.dispose()
   })
 
-  it('steers an idle direct parent and preserves sender attribution', async () => {
+  it('queues an idle direct parent and preserves sender attribution', async () => {
     const releaseChild = Promise.withResolvers<undefined>()
     const adapter = new GatedAdapter([
       { chunks: textResponse('child answer'), gate: releaseChild.promise },
@@ -2718,7 +2718,7 @@ describe('continuable adjacent-Agent delivery', () => {
     await waitNoActivation(ctx, started.childId)
   })
 
-  it('translates direct-parent Steer rejection into an availability error', async () => {
+  it('translates direct-parent Followup rejection into an availability error', async () => {
     const releaseChild = Promise.withResolvers<undefined>()
     const adapter = new GatedAdapter([
       { chunks: textResponse('child answer'), gate: releaseChild.promise },
@@ -2731,7 +2731,7 @@ describe('continuable adjacent-Agent delivery', () => {
       return found!
     })
     const rejection = new Error('parent closed admission')
-    vi.spyOn(parent, 'steer').mockImplementation(() => { throw rejection })
+    vi.spyOn(parent, 'followup').mockImplementation(() => { throw rejection })
 
     await expect(ctx.subagents.sendMessage(child, parent.id, message('cannot arrive'), {
       signal: testSignal,
